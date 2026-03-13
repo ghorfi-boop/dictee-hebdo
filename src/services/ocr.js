@@ -5,7 +5,7 @@ export async function recognizeFromFile(imageFile, onProgress) {
 
   try {
     // Resize image before sending (max 1024px, quality 0.8) to keep payload small
-    const base64 = await resizeAndConvertToBase64(imageFile, 1024, 0.82)
+    const base64 = await resizeAndConvertToBase64(imageFile, 800, 0.75)
     onProgress?.(40)
 
     const response = await fetch('/api/ocr', {
