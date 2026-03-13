@@ -186,6 +186,7 @@ export function useExercise(words) {
   const [isFinished, setIsFinished]             = useState(false)
   const [lastResult, setLastResult]             = useState(null) // 'correct' | 'wrong'
   const [isPlaying, setIsPlaying]               = useState(false)
+  const [lastAnswer, setLastAnswer]             = useState('')
   const inputRef                                = useRef(null)
 
   const currentWord = words[currentWordIndex] || ''
@@ -220,6 +221,7 @@ export function useExercise(words) {
   const onSubmit = useCallback((answer) => {
     const norm   = answer.toLowerCase().trim()
     const target = currentWord.toLowerCase().trim()
+    setLastAnswer(norm)
 
     if (norm === target) {
       // ✅ Correct
@@ -281,6 +283,7 @@ export function useExercise(words) {
     setScore({ correct: 0, total: 0, failedWords: [] })
     setIsFinished(false)
     setLastResult(null)
+    setLastAnswer('')
   }, [])
 
   return {
@@ -300,6 +303,7 @@ export function useExercise(words) {
     getScorePct,
     getStars,
     restart,
+    lastAnswer,
     progress: words.length > 0 ? currentWordIndex / words.length : 0,
   }
 }

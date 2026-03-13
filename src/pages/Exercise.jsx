@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useExercise } from '../hooks/useExercise'
 import Hearts from '../components/Hearts'
 import ProgressBar from '../components/ProgressBar'
+import LetterFeedback from '../components/LetterFeedback'
 
 export default function Exercise() {
   const navigate = useNavigate()
@@ -22,6 +23,7 @@ export default function Exercise() {
     score,
     isFinished,
     lastResult,
+    lastAnswer,
     isPlaying,
     onSubmit,
     playCurrentWord,
@@ -188,12 +190,22 @@ export default function Exercise() {
             </div>
           )}
 
-          {/* Result feedback */}
+          {/* Letter-by-letter feedback (Wordle style) */}
+          {lastResult === 'wrong' && lastAnswer && (
+            <div style={{ marginTop: 12, width: '100%' }}>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 6 }}>
+                Ta réponse :
+              </p>
+              <LetterFeedback answer={lastAnswer} word={currentWord} />
+              <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 8, fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+                <span>🟢 Bonne place</span>
+                <span>🟡 Mauvaise place</span>
+                <span>⬜ Absente</span>
+              </div>
+            </div>
+          )}
           {lastResult === 'correct' && (
             <div className="animate-pop" style={{ marginTop: 16, fontSize: 32 }}>✅</div>
-          )}
-          {lastResult === 'wrong' && (
-            <div className="animate-shake" style={{ marginTop: 16, fontSize: 32 }}>❌</div>
           )}
         </div>
 
