@@ -10,11 +10,12 @@ import {
 } from '../services/storage'
 
 const STEP = {
-  CHOOSE: 'choose',         // Choose: parent or child
+  CHOOSE: 'choose',
   PARENT_LOGIN: 'parent_login',
   PARENT_REGISTER: 'parent_register',
   CHILD_SELECT: 'child_select',
   CHILD_PIN: 'child_pin',
+  CHILD_NO_PROFILE: 'child_no_profile',
 }
 
 export default function Login() {
@@ -133,15 +134,13 @@ export default function Login() {
         {/* ── CHOOSE ─────────────────────────────────────── */}
         {step === STEP.CHOOSE && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }} className="animate-fadeIn">
-            {children.length > 0 && (
-              <button
-                className="btn btn-primary btn-full"
-                onClick={() => setStep(STEP.CHILD_SELECT)}
-                style={{ fontSize: 18 }}
-              >
-                👧 Je suis un enfant
-              </button>
-            )}
+            <button
+              className="btn btn-primary btn-full"
+              onClick={() => setStep(children.length > 0 ? STEP.CHILD_SELECT : STEP.CHILD_NO_PROFILE)}
+              style={{ fontSize: 18 }}
+            >
+              👧 Je suis un enfant
+            </button>
             <button
               className="btn btn-secondary btn-full"
               onClick={() => setStep(STEP.PARENT_LOGIN)}
@@ -322,6 +321,30 @@ export default function Login() {
               className="btn btn-ghost btn-full"
               onClick={() => { setStep(STEP.CHOOSE); setError('') }}
               style={{ marginTop: 16 }}
+            >
+              ← Retour
+            </button>
+          </div>
+        )}
+
+        {/* ── CHILD NO PROFILE ────────────────────────────── */}
+        {step === STEP.CHILD_NO_PROFILE && (
+          <div className="animate-fadeIn" style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 64, marginBottom: 16 }}>👨‍👩‍👧</div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>Pas encore de profil</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: 15, marginBottom: 32, lineHeight: 1.6 }}>
+              Le parent doit d'abord créer un compte et ajouter un profil enfant depuis son tableau de bord.
+            </p>
+            <button
+              className="btn btn-primary btn-full"
+              onClick={() => { setStep(STEP.PARENT_LOGIN); setError('') }}
+            >
+              👨‍👩‍👧 Connexion Parent
+            </button>
+            <button
+              className="btn btn-ghost btn-full"
+              onClick={() => { setStep(STEP.CHOOSE); setError('') }}
+              style={{ marginTop: 8 }}
             >
               ← Retour
             </button>
