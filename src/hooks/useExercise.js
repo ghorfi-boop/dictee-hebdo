@@ -71,18 +71,33 @@ function playRevealSound() {
  * @param {number} attempts   - how many errors so far (1-based at this point)
  * @param {string[]} usedHints - hint types already shown
  */
+/**
+ * Returns a set of letter indices the child got right in their answer
+ * compared to the correct word (position-by-position).
+ */
+function getCorrectPositions(word, answer) {
+  const w = word.toLowerCase()
+  const a = answer.toLowerCase().trim()
+  const correct = new Set()
+  const len = Math.min(w.length, a.length)
+  for (let i = 0; i < len; i++) {
+    if (a[i] === w[i]) correct.add(i)
+  }
+  return correct
+}
+
 function getSmartHint(word, answer, attempts, usedHints) {
   const w = word.toLowerCase()
   const a = answer.toLowerCase().trim()
 
-  const sameLength   = a.length === w.length
-  const sameFirst    = a.length > 0 && a[0] === w[0]
-  const sameLast     = a.length > 0 && a[a.length - 1] === w[w.length - 1]
+  const sameLength = a.length === w.length
+  const sameFirst  = a.length > 0 && a[0] === w[0]
+  const sameLast   = a.length > 0 && a[a.length - 1] === w[w.length - 1]
+  const correctPos = getCorrectPositions(w, a)
 
-  // Pool of possible hints — we skip ones the child already knows
   const candidates = []
 
-  // 1. First letter — skip if they already started correctly
+  // 1. First letter — skip if they already got it right
   if (!sameFirst && !usedHints.includes('first_letter')) {
     candidates.push({
       type: 'first_letter',
@@ -91,7 +106,7 @@ function getSmartHint(word, answer, attempts, usedHints) {
     })
   }
 
-  // 2. Last letter — always useful if not yet shown
+  // 2. Last letter — skip if they already got it right
   if (!sameLast && !usedHints.includes('last_letter')) {
     candidates.push({
       type: 'last_letter',
@@ -100,7 +115,7 @@ function getSmartHint(word, answer, attempts, usedHints) {
     })
   }
 
-  // 3. Number of letters — skip if they already have the right length
+  // 3. Number of letters — skip if they already have the right count
   if (!sameLength && !usedHints.includes('length')) {
     candidates.push({
       type: 'length',
@@ -109,26 +124,40 @@ function getSmartHint(word, answer, attempts, usedHints) {
     })
   }
 
-  // 4. Vowels revealed
+  // 4. Vowels — reveal vowels, but show letters already correctly placed
   if (!usedHints.includes('vowels')) {
     const vowels = 'aàâäeéèêëiîïoôuùûüy'
     const revealed = w
       .split('')
-      .map(c => vowels.includes(c) ? c.toUpperCase() : '_')
+      .map((c, i) => {
+        if (correctPos.has(i)) return c.toUpperCase() // already got this one
+        if (vowels.includes(c)) return c.toUpperCase() // reveal vowels
+        return '_'
+      })
       .join(' ')
-    candidates.push({
-      type: 'vowels',
-      label: `Voyelles : ${revealed}`,
-      priority: 6,
-    })
+    // Only show if it adds new info (not all underscores)
+    if (revealed.includes('_') || revealed !== w.toUpperCase().split('').join(' ')) {
+      candidates.push({
+        type: 'vowels',
+        label: `Indice : ${revealed}`,
+        priority: 6,
+      })
+    }
   }
 
-  // 5. Alternated letters (odd positions)
+  // 5. Alternated letters — show odd positions + already correct positions
   if (!usedHints.includes('alternated')) {
-    const alt = w.split('').map((c, i) => i % 2 === 0 ? c.toUpperCase() : '_').join(' ')
+    const alt = w
+      .split('')
+      .map((c, i) => {
+        if (correctPos.has(i)) return c.toUpperCase() // already got this one
+        if (i % 2 === 0) return c.toUpperCase()       // reveal odd positions
+        return '_'
+      })
+      .join(' ')
     candidates.push({
       type: 'alternated',
-      label: `Lettres : ${alt}`,
+      label: `Indice : ${alt}`,
       priority: 5,
     })
   }
