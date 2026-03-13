@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getWordListByChild, getScoresByChild, formatWeekStart } from '../services/storage'
+import { getWordListHistory, getAllScores, formatWeekStart } from '../services/db'
 import { getDayLabel, getDayEmoji } from '../services/planning'
 import BottomNav from '../components/BottomNav'
 import Stars from '../components/Stars'
 
-const DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'weekend']
+const DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'weekend_review']
 
 export default function History() {
   const navigate = useNavigate()
@@ -14,15 +14,26 @@ export default function History() {
   const [wordLists, setWordLists] = useState([])
   const [scores, setScores] = useState([])
   const [expandedWeek, setExpandedWeek] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (!activeChild) return
-    const wls = getWordListByChild(activeChild.id)
-    // Sort by most recent first
-    wls.sort((a, b) => new Date(b.weekStart) - new Date(a.weekStart))
-    setWordLists(wls)
-    setScores(getScoresByChild(activeChild.id))
+    loadHistory()
   }, [activeChild])
+
+  async function loadHistory() {
+    try {
+      const [wls, allScores] = await Promise.all([
+        getWordListHistory(activeChild.id),
+        getAllScores(activeChild.id),
+      ])
+      setWordLists(wls)
+      setScores(allScores)
+    } catch (err) {
+      console.error('History load error:', err)
+    }
+    setIsLoading(false)
+  }
 
   if (!activeChild) {
     navigate('/')
@@ -30,18 +41,26 @@ export default function History() {
   }
 
   function getScoreForDay(wordListId, day) {
-    return scores.find((s) => s.wordListId === wordListId && s.day === day)
+    return scores.find((s) => s.word_list_id === wordListId && s.day === day)
   }
 
   function getWeekAverage(wordListId) {
-    const weekScores = scores.filter((s) => s.wordListId === wordListId && s.day !== 'weekend')
+    const weekScores = scores.filter((s) => s.word_list_id === wordListId && s.day !== 'weekend_review')
     if (weekScores.length === 0) return null
-    return Math.round(weekScores.reduce((a, b) => a + b.scorePct, 0) / weekScores.length)
+    return Math.round(weekScores.reduce((a, b) => a + b.score_pct, 0) / weekScores.length)
   }
 
   function getTotalStars(wordListId) {
-    const weekScores = scores.filter((s) => s.wordListId === wordListId)
+    const weekScores = scores.filter((s) => s.word_list_id === wordListId)
     return weekScores.reduce((a, b) => a + (b.stars || 0), 0)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <div className="spinner" />
+      </div>
+    )
   }
 
   return (
@@ -51,7 +70,7 @@ export default function History() {
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ fontSize: 26, fontWeight: 900 }}>📊 Mon Historique</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 4 }}>
-            {activeChild.avatar} {activeChild.name}
+            {activeChild.avatar} {activeChild.display_name}
           </p>
         </div>
 
@@ -107,10 +126,10 @@ export default function History() {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 800, fontSize: 15 }}>
-                    Semaine du {formatWeekStart(wl.weekStart)}
+                    Semaine du {formatWeekStart(wl.week_start)}
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                    <span className="badge badge-primary">{wl.words.length} mots</span>
+                    <span className="badge badge-primary">{wl.words?.length || 0} mots</span>
                     {avg !== null && (
                       <span className={`badge ${avg >= 80 ? 'badge-success' : avg >= 60 ? 'badge-warning' : 'badge-error'}`}>
                         {avg}% moy.
@@ -137,6 +156,7 @@ export default function History() {
                     {DAYS_ORDER.map((day) => {
                       const sc = getScoreForDay(wl.id, day)
                       const dayWords = wl.planning?.[day] || []
+                      const isWeekendDay = day === 'weekend_review'
                       return (
                         <div
                           key={day}
@@ -147,20 +167,20 @@ export default function History() {
                             padding: '10px 14px',
                             borderRadius: 12,
                             background: sc
-                              ? sc.scorePct >= 80
+                              ? sc.score_pct >= 80
                                 ? 'var(--success-light)'
-                                : sc.scorePct >= 60
+                                : sc.score_pct >= 60
                                   ? 'var(--warning-light)'
                                   : 'var(--error-light)'
                               : 'var(--bg)',
-                            opacity: dayWords.length === 0 ? 0.5 : 1,
+                            opacity: dayWords.length === 0 && !isWeekendDay ? 0.5 : 1,
                           }}
                         >
                           <span style={{ fontSize: 20 }}>{getDayEmoji(day)}</span>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 700, fontSize: 14 }}>
                               {getDayLabel(day)}
-                              {day === 'weekend' && <span style={{ fontSize: 11, marginLeft: 6, color: 'var(--warning)' }}>RÉVISION</span>}
+                              {isWeekendDay && <span style={{ fontSize: 11, marginLeft: 6, color: 'var(--warning)' }}>RÉVISION</span>}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                               {dayWords.length} mot{dayWords.length !== 1 ? 's' : ''}
@@ -168,12 +188,12 @@ export default function History() {
                           </div>
                           {sc ? (
                             <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontWeight: 800, fontSize: 16 }}>{sc.scorePct}%</div>
+                              <div style={{ fontWeight: 800, fontSize: 16 }}>{sc.score_pct}%</div>
                               <div style={{ fontSize: 14 }}>{'⭐'.repeat(sc.stars)}</div>
                             </div>
                           ) : (
                             <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>
-                              {dayWords.length > 0 ? '—' : 'Libre'}
+                              {dayWords.length > 0 || isWeekendDay ? '—' : 'Libre'}
                             </div>
                           )}
                         </div>
@@ -187,7 +207,7 @@ export default function History() {
                       TOUS LES MOTS
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {wl.words.map((w) => (
+                      {(wl.words || []).map((w) => (
                         <span
                           key={w}
                           style={{

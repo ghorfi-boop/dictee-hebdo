@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { saveScore } from '../services/storage'
+import { saveScore } from '../services/db'
 import Stars from '../components/Stars'
 import Confetti from '../components/Confetti'
 import WordChip from '../components/WordChip'
@@ -28,9 +28,18 @@ export default function Results() {
       navigate('/child')
       return
     }
-    // Save score
-    saveScore({ childId, wordListId, day, scorePct, stars, failedWords, attempts: total })
-    setSaved(true)
+    // Save score to Supabase
+    saveScore(childId, wordListId, day, {
+      scorePct,
+      stars,
+      failedWords,
+      attempts: total,
+    }).then(() => {
+      setSaved(true)
+    }).catch((err) => {
+      console.warn('Score save failed:', err)
+      setSaved(true) // Still show results even if save fails
+    })
 
     // Confetti if perfect
     if (scorePct === 100) {
@@ -39,10 +48,6 @@ export default function Results() {
   }, [])
 
   if (!wordListId) return null
-
-  const isGreat = scorePct >= 80
-  const isGood = scorePct >= 60 && scorePct < 80
-  const isPoor = scorePct < 60
 
   function getMessage() {
     if (scorePct === 100) return { emoji: '🏆', text: "PARFAIT ! Tu es le champion !", color: 'var(--success)' }

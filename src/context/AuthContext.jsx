@@ -1,46 +1,67 @@
-import { createContext, useContext, useState, useEffect } from 'react'
-import { getParent, getChildren } from '../services/storage'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { supabase } from '../services/supabase'
+import { getCurrentUser, getChildren } from '../services/db'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [parent, setParent] = useState(null)
-  const [activeChild, setActiveChild] = useState(null)
+  const [parent, setParent] = useState(null)         // Supabase auth user + profile
+  const [activeChild, setActiveChild] = useState(null) // Child profile (local session)
   const [isLoading, setIsLoading] = useState(true)
 
+  // Restore child session from sessionStorage on mount
   useEffect(() => {
-    // Restore session from localStorage flags
-    const p = getParent()
-    const sessionParent = sessionStorage.getItem('dictee_parent_logged')
-    const sessionChild = sessionStorage.getItem('dictee_active_child')
-
-    if (p && sessionParent === 'true') {
-      setParent(p)
-    }
-    if (sessionChild) {
+    const storedChild = sessionStorage.getItem('dictee_active_child')
+    if (storedChild) {
       try {
-        const childData = JSON.parse(sessionChild)
-        setActiveChild(childData)
+        setActiveChild(JSON.parse(storedChild))
       } catch {
         sessionStorage.removeItem('dictee_active_child')
       }
     }
-    setIsLoading(false)
   }, [])
 
-  function loginParent(parentData) {
-    setParent(parentData)
-    sessionStorage.setItem('dictee_parent_logged', 'true')
+  // Listen to Supabase auth changes
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        await loadParentProfile(session.user)
+      }
+      setIsLoading(false)
+    })
+
+    // Subscribe to auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          await loadParentProfile(session.user)
+        } else {
+          setParent(null)
+          setActiveChild(null)
+          sessionStorage.removeItem('dictee_active_child')
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function loadParentProfile(user) {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+      
+      setParent({ user, profile })
+    } catch {
+      setParent({ user, profile: null })
+    }
   }
 
-  function logoutParent() {
-    setParent(null)
-    setActiveChild(null)
-    sessionStorage.removeItem('dictee_parent_logged')
-    sessionStorage.removeItem('dictee_active_child')
-  }
-
-  function loginChild(childData) {
+  async function loginChild(childData) {
     setActiveChild(childData)
     sessionStorage.setItem('dictee_active_child', JSON.stringify(childData))
   }
@@ -50,30 +71,49 @@ export function AuthProvider({ children }) {
     sessionStorage.removeItem('dictee_active_child')
   }
 
-  // Refresh active child data if updated
-  function refreshActiveChild() {
-    if (!activeChild) return
-    const allChildren = getChildren()
-    const updated = allChildren.find((c) => c.id === activeChild.id)
-    if (updated) {
-      setActiveChild(updated)
-      sessionStorage.setItem('dictee_active_child', JSON.stringify(updated))
-    }
+  async function logoutParent() {
+    setActiveChild(null)
+    sessionStorage.removeItem('dictee_active_child')
+    await supabase.auth.signOut()
+    setParent(null)
   }
+
+  async function refreshActiveChild() {
+    if (!activeChild || !parent?.profile?.id) return
+    try {
+      const { data: updated } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', activeChild.id)
+        .single()
+      
+      if (updated) {
+        setActiveChild(updated)
+        sessionStorage.setItem('dictee_active_child', JSON.stringify(updated))
+      }
+    } catch {}
+  }
+
+  // Compatibility helpers
+  const isParentLoggedIn = !!parent?.user
+  const isChildLoggedIn = !!activeChild
 
   return (
     <AuthContext.Provider
       value={{
-        parent,
+        parent: parent?.profile || parent?.user,   // backward compat
+        parentUser: parent?.user,
+        parentProfile: parent?.profile,
         activeChild,
         isLoading,
-        isParentLoggedIn: !!parent,
-        isChildLoggedIn: !!activeChild,
-        loginParent,
-        logoutParent,
+        isParentLoggedIn,
+        isChildLoggedIn,
         loginChild,
         logoutChild,
+        logoutParent,
         refreshActiveChild,
+        // Legacy compat
+        loginParent: () => {}, // no-op, handled by Supabase
       }}
     >
       {children}

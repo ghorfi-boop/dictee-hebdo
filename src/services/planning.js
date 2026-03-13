@@ -11,7 +11,7 @@ export function generatePlanning(words) {
     wednesday: [],
     thursday: [],
     friday: [],
-    weekend: [...words],
+    weekend_review: [...(words || [])],
   }
 
   if (!words || words.length === 0) return planning
@@ -33,6 +33,7 @@ export function getDayLabel(key) {
     thursday: 'Jeudi',
     friday: 'Vendredi',
     weekend: 'Week-end',
+    weekend_review: 'Week-end',
   }
   return labels[key] || key
 }
@@ -45,12 +46,13 @@ export function getDayEmoji(key) {
     thursday: '🌟',
     friday: '🎉',
     weekend: '🏆',
+    weekend_review: '🏆',
   }
   return emojis[key] || '📚'
 }
 
 export function getOrderedDays() {
-  return ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'weekend']
+  return ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'weekend_review']
 }
 
 export function isWeekend() {

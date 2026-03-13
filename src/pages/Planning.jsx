@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { generatePlanning, getDayLabel, getDayEmoji, getOrderedDays } from '../services/planning'
-import { updateWordListPlanning, markAudioCached, getWordLists } from '../services/storage'
+import { updateWordListPlanning, markAudioCached } from '../services/db'
+import { supabase } from '../services/supabase'
 import { preGenerateAll } from '../services/tts'
 import WordChip from '../components/WordChip'
 
@@ -20,45 +21,61 @@ export default function Planning() {
 
   useEffect(() => {
     if (!wordListId) { navigate('/parent'); return }
-    const lists = getWordLists()
-    const wl = lists.find((w) => w.id === wordListId)
-    if (!wl) { navigate('/parent'); return }
-    setWordList(wl)
-    // Generate or restore planning
-    if (wl.planning) {
-      setPlanning(wl.planning)
-      setIsReady(true)
-    } else {
-      const p = generatePlanning(wl.words)
-      setPlanning(p)
-    }
+    loadWordList()
   }, [wordListId])
+
+  async function loadWordList() {
+    try {
+      const { data: wl, error: wlErr } = await supabase
+        .from('word_lists')
+        .select('*')
+        .eq('id', wordListId)
+        .single()
+      
+      if (wlErr || !wl) { navigate('/parent'); return }
+      setWordList(wl)
+      
+      if (wl.planning && Object.keys(wl.planning).length > 0) {
+        setPlanning(wl.planning)
+        setIsReady(true)
+      } else {
+        const p = generatePlanning(wl.words)
+        setPlanning(p)
+      }
+    } catch {
+      navigate('/parent')
+    }
+  }
 
   async function handleValidate() {
     if (!wordList || !planning) return
     setIsGenerating(true)
     setError('')
 
-    // Save planning
-    updateWordListPlanning(wordListId, planning)
-
-    // Pre-generate audio
-    const allWords = wordList.words
-    setAudioTotal(allWords.length)
-    setAudioProgress(0)
-
     try {
-      await preGenerateAll(allWords, (done, total) => {
-        setAudioProgress(done)
-        setAudioTotal(total)
-      })
-      markAudioCached(wordListId)
-    } catch (err) {
-      console.warn('Audio pre-generation partial failure:', err)
-    }
+      // Save planning to Supabase
+      await updateWordListPlanning(wordListId, planning)
 
+      // Pre-generate audio
+      const allWords = wordList.words || []
+      setAudioTotal(allWords.length)
+      setAudioProgress(0)
+
+      try {
+        await preGenerateAll(allWords, (done, total) => {
+          setAudioProgress(done)
+          setAudioTotal(total)
+        })
+        await markAudioCached(wordListId)
+      } catch (err) {
+        console.warn('Audio pre-generation partial failure:', err)
+      }
+
+      setIsReady(true)
+    } catch (err) {
+      setError('Erreur lors de la sauvegarde: ' + err.message)
+    }
     setIsGenerating(false)
-    setIsReady(true)
   }
 
   function handleGoToDashboard() {

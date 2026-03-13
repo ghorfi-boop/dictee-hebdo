@@ -1,16 +1,21 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import WordChip from '../components/WordChip'
-import { createWordList } from '../services/storage'
+import { saveWordList, getThisWeekStart } from '../services/db'
+import { useAuth } from '../context/AuthContext'
 
 export default function WordVerify() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { childId, words: initialWords } = location.state || {}
+  const { parentProfile, parentUser } = useAuth()
+  const { childId, words: initialWords, parentId: locationParentId } = location.state || {}
 
   const [words, setWords] = useState(initialWords || [])
   const [newWord, setNewWord] = useState('')
   const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+
+  const parentId = locationParentId || parentProfile?.id || parentUser?.id
 
   if (!childId) {
     navigate('/parent')
@@ -34,13 +39,20 @@ export default function WordVerify() {
     if (e.key === 'Enter') { e.preventDefault(); handleAdd() }
   }
 
-  function handleValidate() {
+  async function handleValidate() {
     if (words.length === 0) {
       setError('Ajoutez au moins un mot.')
       return
     }
-    const wl = createWordList({ childId, words })
-    navigate('/planning', { state: { wordListId: wl.id, childId } })
+    setIsLoading(true)
+    try {
+      const weekStart = getThisWeekStart()
+      const wl = await saveWordList(childId, parentId, weekStart, words, {})
+      navigate('/planning', { state: { wordListId: wl.id, childId } })
+    } catch (err) {
+      setError('Erreur lors de la sauvegarde: ' + err.message)
+    }
+    setIsLoading(false)
   }
 
   return (
@@ -110,8 +122,8 @@ export default function WordVerify() {
         {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <button className="btn btn-primary btn-full" onClick={handleValidate}>
-            🗓️ Créer le planning
+          <button className="btn btn-primary btn-full" onClick={handleValidate} disabled={isLoading}>
+            {isLoading ? '⏳ Sauvegarde...' : '🗓️ Créer le planning'}
           </button>
           <button className="btn btn-ghost btn-full" onClick={() => navigate(-1)}>
             ← Retour

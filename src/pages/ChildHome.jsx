@@ -3,11 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   getCurrentWordList,
-  getScores,
+  getAllScores,
   getCurrentDayKey,
-  getThisWeekStart,
   formatWeekStart,
-} from '../services/storage'
+} from '../services/db'
 import { getDayLabel, getDayEmoji, getOrderedDays, isWeekend } from '../services/planning'
 import BottomNav from '../components/BottomNav'
 import ProgressBar from '../components/ProgressBar'
@@ -19,24 +18,44 @@ export default function ChildHome() {
   const [scores, setScores] = useState([])
   const [currentDayKey, setCurrentDayKey] = useState(getCurrentDayKey())
   const [todayDone, setTodayDone] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (!activeChild) return
-    const wl = getCurrentWordList(activeChild.id)
-    setWordList(wl)
-    const allScores = getScores().filter((s) => s.childId === activeChild.id)
-    setScores(allScores)
-    const dayKey = getCurrentDayKey()
-    setCurrentDayKey(dayKey)
-    if (wl) {
-      const todayScore = allScores.find((s) => s.wordListId === wl.id && s.day === dayKey)
-      setTodayDone(!!todayScore)
-    }
+    loadData()
   }, [activeChild])
+
+  async function loadData() {
+    try {
+      const [wl, allScores] = await Promise.all([
+        getCurrentWordList(activeChild.id),
+        getAllScores(activeChild.id),
+      ])
+      setWordList(wl)
+      setScores(allScores)
+      const dayKey = getCurrentDayKey()
+      setCurrentDayKey(dayKey)
+      if (wl) {
+        const todayScore = allScores.find((s) => s.word_list_id === wl.id && s.day === dayKey)
+        setTodayDone(!!todayScore)
+      }
+    } catch (err) {
+      console.error('ChildHome load error:', err)
+    }
+    setIsLoading(false)
+  }
 
   if (!activeChild) {
     navigate('/')
     return null
+  }
+
+  if (isLoading) {
+    return (
+      <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <div className="spinner" />
+      </div>
+    )
   }
 
   function getTodayWords() {
@@ -46,13 +65,13 @@ export default function ChildHome() {
 
   function getDayScore(day) {
     if (!wordList) return null
-    return scores.find((s) => s.wordListId === wordList.id && s.day === day)
+    return scores.find((s) => s.word_list_id === wordList.id && s.day === day)
   }
 
   function getCompletedDays() {
     if (!wordList) return 0
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
-    return days.filter((d) => scores.find((s) => s.wordListId === wordList.id && s.day === d)).length
+    return days.filter((d) => scores.find((s) => s.word_list_id === wordList.id && s.day === d)).length
   }
 
   function handleStartExercise() {
@@ -81,11 +100,11 @@ export default function ChildHome() {
         <div style={{ marginBottom: 24 }}>
           <p style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: 14 }}>Bonjour</p>
           <h1 style={{ fontSize: 26, fontWeight: 900 }}>
-            {activeChild.avatar} {activeChild.name} !
+            {activeChild.avatar} {activeChild.display_name} !
           </h1>
           {wordList && (
             <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
-              Semaine du {formatWeekStart(wordList.weekStart)}
+              Semaine du {formatWeekStart(wordList.week_start)}
             </p>
           )}
         </div>
@@ -131,9 +150,9 @@ export default function ChildHome() {
                           fontWeight: 800,
                           border: isToday ? '3px solid var(--primary)' : '3px solid transparent',
                           background: score
-                            ? score.scorePct >= 80
+                            ? score.score_pct >= 80
                               ? 'var(--success-light)'
-                              : score.scorePct >= 60
+                              : score.score_pct >= 60
                                 ? 'var(--warning-light)'
                                 : 'var(--error-light)'
                             : 'var(--bg)',
@@ -161,14 +180,14 @@ export default function ChildHome() {
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 18 }}>Révision Week-end !</div>
                     <div style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 2 }}>
-                      Tous les {wordList.words.length} mots de la semaine
+                      Tous les {wordList.words?.length || 0} mots de la semaine
                     </div>
                   </div>
                 </div>
-                {getDayScore('weekend') ? (
+                {getDayScore('weekend_review') ? (
                   <div>
                     <div className="alert alert-success" style={{ marginBottom: 12 }}>
-                      ✅ Révision terminée ! Score: {getDayScore('weekend').scorePct}%
+                      ✅ Révision terminée ! Score: {getDayScore('weekend_review').score_pct}%
                     </div>
                     <button
                       className="btn btn-secondary btn-full"
@@ -176,8 +195,8 @@ export default function ChildHome() {
                         state: {
                           wordListId: wordList.id,
                           childId: activeChild.id,
-                          day: 'weekend',
-                          words: [...wordList.words].sort(() => Math.random() - 0.5),
+                          day: 'weekend_review',
+                          words: [...(wordList.words || [])].sort(() => Math.random() - 0.5),
                         },
                       })}
                     >
@@ -192,8 +211,8 @@ export default function ChildHome() {
                       state: {
                         wordListId: wordList.id,
                         childId: activeChild.id,
-                        day: 'weekend',
-                        words: [...wordList.words].sort(() => Math.random() - 0.5),
+                        day: 'weekend_review',
+                        words: [...(wordList.words || [])].sort(() => Math.random() - 0.5),
                       },
                     })}
                   >
@@ -225,7 +244,7 @@ export default function ChildHome() {
                         {'⭐'.repeat(todayScore?.stars || 0)}
                       </span>
                       <div style={{ fontWeight: 700, color: 'var(--text-muted)', marginTop: 4 }}>
-                        Score : {todayScore?.scorePct}%
+                        Score : {todayScore?.score_pct}%
                       </div>
                     </div>
                     <button className="btn btn-secondary btn-full" onClick={handleStartExercise}>

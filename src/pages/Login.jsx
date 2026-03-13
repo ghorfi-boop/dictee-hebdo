@@ -1,13 +1,8 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import {
-  getParent,
-  createParent,
-  checkParentPassword,
-  getChildren,
-  checkChildPin,
-} from '../services/storage'
+import { signIn, signUp, getChildren, verifyChildPin } from '../services/db'
+import { supabase } from '../services/supabase'
 
 const STEP = {
   CHOOSE: 'choose',
@@ -20,18 +15,41 @@ const STEP = {
 
 export default function Login() {
   const navigate = useNavigate()
-  const { loginParent, loginChild } = useAuth()
+  const { loginChild, isParentLoggedIn, parentProfile } = useAuth()
   const [step, setStep] = useState(STEP.CHOOSE)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
   const [selectedChild, setSelectedChild] = useState(null)
   const [pin, setPin] = useState(['', '', '', ''])
+  const [children, setChildren] = useState([])
   const pinRefs = [useRef(), useRef(), useRef(), useRef()]
 
-  const children = getChildren()
-  const parent = getParent()
+  // Redirect if already logged in as parent
+  useEffect(() => {
+    if (isParentLoggedIn) {
+      navigate('/parent')
+    }
+  }, [isParentLoggedIn])
+
+  // Load children for child login
+  async function loadChildren() {
+    try {
+      // Get all child profiles across all parents (for child selection)
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'child')
+        .order('created_at', { ascending: true })
+      setChildren(data || [])
+      return data || []
+    } catch {
+      return []
+    }
+  }
 
   function handlePinChange(idx, value) {
     if (!/^\d?$/.test(value)) return
@@ -49,32 +67,22 @@ export default function Login() {
     }
   }
 
-  function handleParentLogin(e) {
+  async function handleParentLogin(e) {
     e.preventDefault()
     setError('')
-    if (!parent) {
-      setError("Aucun compte parent trouvé. Créez un compte d'abord.")
-      return
+    setIsLoading(true)
+    try {
+      await signIn(email, password)
+      navigate('/parent')
+    } catch (err) {
+      setError(err.message || 'Email ou mot de passe incorrect.')
     }
-    if (parent.email !== email) {
-      setError('Email incorrect.')
-      return
-    }
-    if (!checkParentPassword(password)) {
-      setError('Mot de passe incorrect.')
-      return
-    }
-    loginParent(parent)
-    navigate('/parent')
+    setIsLoading(false)
   }
 
-  function handleParentRegister(e) {
+  async function handleParentRegister(e) {
     e.preventDefault()
     setError('')
-    if (parent) {
-      setError('Un compte parent existe déjà. Connectez-vous.')
-      return
-    }
     if (!email || !password) {
       setError('Email et mot de passe requis.')
       return
@@ -87,9 +95,25 @@ export default function Login() {
       setError('Les mots de passe ne correspondent pas.')
       return
     }
-    const newParent = createParent({ email, password })
-    loginParent(newParent)
-    navigate('/parent')
+    setIsLoading(true)
+    try {
+      await signUp(email, password, displayName || email.split('@')[0])
+      // After signup, try to sign in
+      await signIn(email, password)
+      navigate('/parent')
+    } catch (err) {
+      setError(err.message || 'Erreur lors de la création du compte.')
+    }
+    setIsLoading(false)
+  }
+
+  async function handleChildModeClick() {
+    const kids = await loadChildren()
+    if (kids.length > 0) {
+      setStep(STEP.CHILD_SELECT)
+    } else {
+      setStep(STEP.CHILD_NO_PROFILE)
+    }
   }
 
   function handleChildSelect(child) {
@@ -100,21 +124,29 @@ export default function Login() {
     setTimeout(() => pinRefs[0].current?.focus(), 100)
   }
 
-  function handleChildPin(e) {
+  async function handleChildPin(e) {
     e.preventDefault()
     const pinStr = pin.join('')
     if (pinStr.length !== 4) {
       setError('Entrez votre code PIN (4 chiffres).')
       return
     }
-    if (!checkChildPin(selectedChild.id, pinStr)) {
-      setError('Code PIN incorrect.')
-      setPin(['', '', '', ''])
-      setTimeout(() => pinRefs[0].current?.focus(), 100)
-      return
+    setIsLoading(true)
+    try {
+      const valid = await verifyChildPin(selectedChild.id, pinStr)
+      if (!valid) {
+        setError('Code PIN incorrect.')
+        setPin(['', '', '', ''])
+        setTimeout(() => pinRefs[0].current?.focus(), 100)
+        setIsLoading(false)
+        return
+      }
+      await loginChild(selectedChild)
+      navigate('/child')
+    } catch (err) {
+      setError(err.message || 'Erreur de connexion.')
     }
-    loginChild(selectedChild)
-    navigate('/child')
+    setIsLoading(false)
   }
 
   return (
@@ -136,7 +168,7 @@ export default function Login() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }} className="animate-fadeIn">
             <button
               className="btn btn-primary btn-full"
-              onClick={() => setStep(children.length > 0 ? STEP.CHILD_SELECT : STEP.CHILD_NO_PROFILE)}
+              onClick={handleChildModeClick}
               style={{ fontSize: 18 }}
             >
               👧 Je suis un enfant
@@ -197,8 +229,8 @@ export default function Login() {
                 placeholder="••••••••"
               />
             </div>
-            <button type="submit" className="btn btn-primary btn-full" style={{ marginTop: 8 }}>
-              Se connecter
+            <button type="submit" className="btn btn-primary btn-full" style={{ marginTop: 8 }} disabled={isLoading}>
+              {isLoading ? '⏳ Connexion...' : 'Se connecter'}
             </button>
             <button
               type="button"
@@ -230,6 +262,16 @@ export default function Login() {
             </div>
             {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
             <div className="form-group">
+              <label className="form-label">Prénom (optionnel)</label>
+              <input
+                type="text"
+                className="input"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Ex: Marie"
+              />
+            </div>
+            <div className="form-group">
               <label className="form-label">Email</label>
               <input
                 type="email"
@@ -237,7 +279,6 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="votre@email.com"
-                autoFocus
               />
             </div>
             <div className="form-group">
@@ -260,8 +301,8 @@ export default function Login() {
                 placeholder="••••••••"
               />
             </div>
-            <button type="submit" className="btn btn-primary btn-full" style={{ marginTop: 8 }}>
-              Créer mon compte
+            <button type="submit" className="btn btn-primary btn-full" style={{ marginTop: 8 }} disabled={isLoading}>
+              {isLoading ? '⏳ Création...' : 'Créer mon compte'}
             </button>
             <button
               type="button"
@@ -313,7 +354,7 @@ export default function Login() {
                   onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                 >
                   <span style={{ fontSize: 40 }}>{child.avatar}</span>
-                  <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)' }}>{child.name}</span>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)' }}>{child.display_name}</span>
                 </button>
               ))}
             </div>
@@ -356,7 +397,7 @@ export default function Login() {
           <form onSubmit={handleChildPin} className="animate-fadeIn">
             <div style={{ textAlign: 'center', marginBottom: 32 }}>
               <div style={{ fontSize: 56, marginBottom: 8 }}>{selectedChild.avatar}</div>
-              <h2 style={{ fontSize: 22, fontWeight: 800 }}>Bonjour {selectedChild.name} !</h2>
+              <h2 style={{ fontSize: 22, fontWeight: 800 }}>Bonjour {selectedChild.display_name} !</h2>
               <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 4 }}>Entre ton code PIN secret</p>
             </div>
             {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
@@ -375,8 +416,8 @@ export default function Login() {
                 />
               ))}
             </div>
-            <button type="submit" className="btn btn-primary btn-full">
-              C'est parti ! 🚀
+            <button type="submit" className="btn btn-primary btn-full" disabled={isLoading}>
+              {isLoading ? '⏳...' : "C'est parti ! 🚀"}
             </button>
             <button
               type="button"

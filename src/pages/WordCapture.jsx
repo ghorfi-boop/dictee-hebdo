@@ -1,11 +1,15 @@
 import { useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { recognizeFromFile } from '../services/ocr'
+import { saveWordList, getThisWeekStart } from '../services/db'
+import { useAuth } from '../context/AuthContext'
 import WordChip from '../components/WordChip'
+import ImageCropper from '../components/ImageCropper'
 
 export default function WordCapture() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { parentProfile, parentUser } = useAuth()
   const childId = location.state?.childId
 
   const [mode, setMode] = useState(null) // 'photo' | 'manual'
@@ -14,16 +18,24 @@ export default function WordCapture() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState('')
+
+  // Image crop state
+  const [capturedImageSrc, setCapturedImageSrc] = useState(null)
+  const [capturedFile, setCapturedFile] = useState(null)
+  const [showCropper, setShowCropper] = useState(false)
+
   const fileRef = useRef()
+
+  const parentId = parentProfile?.id || parentUser?.id
 
   if (!childId) {
     navigate('/parent')
     return null
   }
 
-  async function handlePhoto(e) {
-    const file = e.target.files[0]
-    if (!file) return
+  async function analyzeFile(file) {
+    setShowCropper(false)
+    setCapturedImageSrc(null)
     setIsProcessing(true)
     setError('')
     setProgress(0)
@@ -40,6 +52,21 @@ export default function WordCapture() {
     }
     setIsProcessing(false)
     setProgress(0)
+  }
+
+  async function handlePhoto(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    
+    // Show the cropper instead of immediately processing
+    const url = URL.createObjectURL(file)
+    setCapturedImageSrc(url)
+    setCapturedFile(file)
+    setShowCropper(true)
+    setMode('photo')
+    
+    // Reset file input so same file can be selected again
+    e.target.value = ''
   }
 
   function handleAddManual() {
@@ -63,12 +90,12 @@ export default function WordCapture() {
     }
   }
 
-  function handleContinue() {
+  async function handleContinue() {
     if (words.length === 0) {
       setError("Ajoutez au moins un mot avant de continuer.")
       return
     }
-    navigate('/verify', { state: { childId, words } })
+    navigate('/verify', { state: { childId, words, parentId } })
   }
 
   return (
@@ -80,8 +107,25 @@ export default function WordCapture() {
           <h1 className="page-title">Saisie des mots</h1>
         </div>
 
+        {/* Image Cropper Modal */}
+        {showCropper && capturedImageSrc && (
+          <div className="animate-fadeIn">
+            <ImageCropper
+              imageSrc={capturedImageSrc}
+              onAnalyzeCrop={(croppedFile) => analyzeFile(croppedFile)}
+              onAnalyzeFull={() => analyzeFile(capturedFile)}
+              onCancel={() => {
+                setShowCropper(false)
+                setCapturedImageSrc(null)
+                setCapturedFile(null)
+                if (!words.length) setMode(null)
+              }}
+            />
+          </div>
+        )}
+
         {/* Mode Selection */}
-        {!mode && (
+        {!mode && !showCropper && (
           <div className="animate-fadeIn">
             <p style={{ color: 'var(--text-muted)', marginBottom: 24, fontWeight: 600 }}>
               Comment veux-tu saisir les mots de la dictée ?
@@ -158,7 +202,7 @@ export default function WordCapture() {
         )}
 
         {/* Mode: photo/manual with word list */}
-        {(mode === 'photo' || mode === 'manual') && !isProcessing && (
+        {(mode === 'photo' || mode === 'manual') && !isProcessing && !showCropper && (
           <div className="animate-fadeIn">
             {/* Manual Input */}
             <div className="form-group" style={{ marginBottom: 16 }}>

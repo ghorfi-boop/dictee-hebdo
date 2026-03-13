@@ -1,52 +1,97 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   getChildren,
-  createChild,
-  deleteChild,
+  createChildProfile,
+  deleteChildProfile,
   getChildStats,
   getCurrentWordList,
-} from '../services/storage'
+} from '../services/db'
 
 const AVATARS = ['👦', '👧', '🧒', '👶', '🐶', '🐱', '🦊', '🐻', '🐼', '🦁', '🐯', '🐸', '🐧', '🦋', '⭐', '🌈', '🚀', '🎮', '🎵', '🌟']
 
 export default function ParentDashboard() {
   const navigate = useNavigate()
-  const { parent, logoutParent } = useAuth()
-  const [children, setChildren] = useState(getChildren())
+  const { parentProfile, parentUser, logoutParent } = useAuth()
+  const [children, setChildren] = useState([])
+  const [childStats, setChildStats] = useState({})
+  const [childWordLists, setChildWordLists] = useState({})
   const [showAddChild, setShowAddChild] = useState(false)
   const [newName, setNewName] = useState('')
   const [newAvatar, setNewAvatar] = useState('👦')
   const [newPin, setNewPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
   const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
 
-  function handleAddChild(e) {
+  const parentId = parentProfile?.id || parentUser?.id
+
+  useEffect(() => {
+    if (parentId) {
+      loadChildren()
+    }
+  }, [parentId])
+
+  async function loadChildren() {
+    try {
+      const kids = await getChildren(parentId)
+      setChildren(kids)
+      
+      // Load stats and word lists for each child
+      const statsMap = {}
+      const wlMap = {}
+      for (const child of kids) {
+        try {
+          statsMap[child.id] = await getChildStats(child.id)
+          wlMap[child.id] = await getCurrentWordList(child.id)
+        } catch {}
+      }
+      setChildStats(statsMap)
+      setChildWordLists(wlMap)
+    } catch (err) {
+      console.error('Failed to load children:', err)
+    }
+  }
+
+  async function handleAddChild(e) {
     e.preventDefault()
     setError('')
     if (!newName.trim()) { setError('Prénom requis.'); return }
     if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) { setError('PIN : 4 chiffres.'); return }
     if (newPin !== confirmPin) { setError('Les PINs ne correspondent pas.'); return }
-    createChild({ name: newName.trim(), avatar: newAvatar, pin: newPin })
-    setChildren(getChildren())
-    setShowAddChild(false)
-    setNewName('')
-    setNewPin('')
-    setConfirmPin('')
-    setNewAvatar('👦')
+    
+    setIsLoading(true)
+    try {
+      await createChildProfile(parentId, { name: newName.trim(), avatar: newAvatar, pin: newPin })
+      await loadChildren()
+      setShowAddChild(false)
+      setNewName('')
+      setNewPin('')
+      setConfirmPin('')
+      setNewAvatar('👦')
+    } catch (err) {
+      setError(err.message || 'Erreur lors de la création du profil.')
+    }
+    setIsLoading(false)
   }
 
-  function handleDelete(childId) {
-    deleteChild(childId)
-    setChildren(getChildren())
-    setDeleteConfirm(null)
+  async function handleDelete(childId) {
+    try {
+      await deleteChildProfile(childId)
+      await loadChildren()
+      setDeleteConfirm(null)
+    } catch (err) {
+      console.error('Delete failed:', err)
+    }
   }
 
   function handleSelectChild(child) {
     navigate('/words', { state: { childId: child.id } })
   }
+
+  const displayEmail = parentProfile?.display_name || parentUser?.email || ''
 
   return (
     <div className="app-container">
@@ -80,7 +125,7 @@ export default function ParentDashboard() {
           </button>
         </div>
         <div style={{ marginTop: 16 }}>
-          <span style={{ fontSize: 13, opacity: 0.8 }}>{parent?.email}</span>
+          <span style={{ fontSize: 13, opacity: 0.8 }}>{displayEmail}</span>
         </div>
       </div>
 
@@ -106,8 +151,8 @@ export default function ParentDashboard() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
           {children.map((child) => {
-            const stats = getChildStats(child.id)
-            const currentWL = getCurrentWordList(child.id)
+            const stats = childStats[child.id] || { totalSessions: 0, avgScore: 0 }
+            const currentWL = childWordLists[child.id]
             return (
               <div
                 key={child.id}
@@ -129,10 +174,10 @@ export default function ParentDashboard() {
                   {child.avatar}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800, fontSize: 18 }}>{child.name}</div>
+                  <div style={{ fontWeight: 800, fontSize: 18 }}>{child.display_name}</div>
                   <div style={{ color: 'var(--text-muted)', fontSize: 13, fontWeight: 600, marginTop: 2 }}>
                     {currentWL
-                      ? `${currentWL.words.length} mots cette semaine`
+                      ? `${currentWL.words?.length || 0} mots cette semaine`
                       : 'Pas de liste cette semaine'}
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
@@ -218,8 +263,8 @@ export default function ParentDashboard() {
               />
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-              <button onClick={handleAddChild} className="btn btn-success" style={{ flex: 1 }}>
-                Créer le profil
+              <button onClick={handleAddChild} className="btn btn-success" style={{ flex: 1 }} disabled={isLoading}>
+                {isLoading ? '⏳ Création...' : 'Créer le profil'}
               </button>
               <button
                 onClick={() => { setShowAddChild(false); setError('') }}
