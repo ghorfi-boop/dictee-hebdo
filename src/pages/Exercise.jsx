@@ -174,19 +174,17 @@ export default function Exercise() {
                 marginTop: 16,
                 padding: '12px 20px',
                 borderRadius: 14,
-                background:
-                  hint.type === 'revealed' ? 'var(--error-light)' : 'var(--warning-light)',
-                color: hint.type === 'revealed' ? '#991B1B' : '#92400E',
+                background: hint.type === 'revealed' ? '#FEE2E2' : '#FEF9C3',
+                color: hint.type === 'revealed' ? '#991B1B' : '#78350F',
                 fontWeight: 800,
-                fontSize: hint.type === 'revealed' ? 22 : 16,
-                letterSpacing: hint.type === 'alternated' ? 4 : 0,
-                fontFamily: hint.type === 'alternated' ? 'monospace' : 'var(--font)',
+                fontSize: hint.type === 'revealed' ? 24 : 16,
+                letterSpacing: ['alternated', 'vowels', 'length'].includes(hint.type) ? 3 : 0,
+                fontFamily: ['alternated', 'vowels', 'length'].includes(hint.type) ? 'monospace' : 'var(--font)',
               }}
             >
-              {hint.type === 'first_letter' && `Commence par : ${hint.value[0]}`}
-              {hint.type === 'length' && `Nombre de lettres : ${hint.value}`}
-              {hint.type === 'alternated' && hint.value}
-              {hint.type === 'revealed' && `Le mot était : ${hint.value}`}
+              {hint.type === 'revealed'
+                ? `Le mot était : ${hint.label}`
+                : `💡 ${hint.label}`}
             </div>
           )}
 
