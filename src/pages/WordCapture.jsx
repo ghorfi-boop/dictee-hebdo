@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { recognizeText, parseWords } from '../services/ocr'
+import { recognizeFromFile } from '../services/ocr'
 import WordChip from '../components/WordChip'
 
 export default function WordCapture() {
@@ -28,8 +28,7 @@ export default function WordCapture() {
     setError('')
     setProgress(0)
     try {
-      const text = await recognizeText(file, setProgress)
-      const extracted = parseWords(text)
+      const extracted = await recognizeFromFile(file, setProgress)
       if (extracted.length === 0) {
         setError("Aucun mot détecté. Essayez avec une meilleure photo ou saisissez manuellement.")
       } else {
