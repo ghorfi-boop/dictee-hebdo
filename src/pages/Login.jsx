@@ -147,7 +147,24 @@ export default function Login() {
               onClick={() => setStep(STEP.PARENT_LOGIN)}
               style={{ fontSize: 18 }}
             >
-              👨‍👩‍👧 Je suis le parent
+              👨‍👩‍👧 Connexion Parent
+            </button>
+            <button
+              className="btn btn-full"
+              onClick={() => setStep(STEP.PARENT_REGISTER)}
+              style={{
+                fontSize: 16,
+                background: 'white',
+                border: '2px solid var(--primary)',
+                color: 'var(--primary)',
+                fontWeight: 700,
+                borderRadius: 16,
+                minHeight: 52,
+                cursor: 'pointer',
+                fontFamily: 'var(--font)',
+              }}
+            >
+              ✨ Créer un compte parent
             </button>
           </div>
         )}
