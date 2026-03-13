@@ -144,16 +144,11 @@ export default function Login() {
             )}
             <button
               className="btn btn-secondary btn-full"
-              onClick={() => setStep(parent ? STEP.PARENT_LOGIN : STEP.PARENT_REGISTER)}
+              onClick={() => setStep(STEP.PARENT_LOGIN)}
               style={{ fontSize: 18 }}
             >
               👨‍👩‍👧 Je suis le parent
             </button>
-            {!parent && (
-              <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
-                Première visite ? Créez votre compte parent !
-              </p>
-            )}
           </div>
         )}
 
@@ -197,6 +192,16 @@ export default function Login() {
             >
               ← Retour
             </button>
+            <div style={{ textAlign: 'center', marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>Pas encore de compte ? </span>
+              <button
+                type="button"
+                onClick={() => { setStep(STEP.PARENT_REGISTER); setError('') }}
+                style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'var(--font)' }}
+              >
+                Créer un compte
+              </button>
+            </div>
           </form>
         )}
 
@@ -250,6 +255,16 @@ export default function Login() {
             >
               ← Retour
             </button>
+            <div style={{ textAlign: 'center', marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>Déjà un compte ? </span>
+              <button
+                type="button"
+                onClick={() => { setStep(STEP.PARENT_LOGIN); setError('') }}
+                style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'var(--font)' }}
+              >
+                Se connecter
+              </button>
+            </div>
           </form>
         )}
 
